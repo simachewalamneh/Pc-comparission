@@ -1,13 +1,7 @@
-
-
 import numpy as np
-
-
-# ---------------------------------------------------------------- #
 # Error distributions: each defines E(eps) = -log p(eps) and its
 # derivative dE/deps. Gaussian recovers the classical squared error;
 # the others show the "beyond Gaussian" generalization.
-# ---------------------------------------------------------------- #
 class Gaussian:
     def __init__(self, precision=1.0):
         self.precision = precision
@@ -60,11 +54,10 @@ class StudentT:
         return (self.nu + 1) * eps / (self.nu * self.scale ** 2 + eps ** 2)
 
 
-# ---------------------------------------------------------------- #
 # Hierarchical PC model (2 layers, scalar latents). Same class is
 # used for both the Gaussian and generalized experiments -- only the
 # dist0 / dist1 objects passed in differ.
-# ---------------------------------------------------------------- #
+
 class HierarchicalPC:
     def __init__(self, dist0, dist1, prior_var=1.0, seed=0):
         rng = np.random.default_rng(seed)
