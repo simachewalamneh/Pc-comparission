@@ -89,4 +89,3 @@ Five comparison axes (see `run_experiment_deep.py` for full derivations):
 - Rao, R. P. N., & Ballard, D. H. (1999). Predictive coding in the visual cortex. *Nature Neuroscience*, 2(1), 79–87.
 - Pinchetti, L., et al. (2022). Predictive coding beyond Gaussian distributions. *NeurIPS*.
 
-*(Citations reconstructed from memory — please verify page/venue details against the original PDFs before citing.)*
