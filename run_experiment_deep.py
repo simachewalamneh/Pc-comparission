@@ -1,4 +1,3 @@
-
 import numpy as np
 import matplotlib.pyplot as plt
 from pc_core import Gaussian, Laplace, HierarchicalPC
@@ -9,7 +8,6 @@ N_EPOCHS = 150
 N_INFER_STEPS = 30
 LR_Z = 0.15
 LR_W = 0.03
-
 
 def make_dataset(noise_type, seed=SEED, n=N_SAMPLES):
     rng = np.random.default_rng(seed)
@@ -106,9 +104,8 @@ if __name__ == "__main__":
     conditions = ["gaussian", "laplace", "outlier"]
     R = {c: run_condition(c) for c in conditions}
 
-    # ---------------------------------------------------------------
     # Axis 1: error computation -- identical formula, show directly
-    # ---------------------------------------------------------------
+
     c = "gaussian"
     x0 = R[c]["x"][0]
     m = R[c]["model_g"]
@@ -119,9 +116,8 @@ if __name__ == "__main__":
     print(f"eps1 = z1 - W2*z2 = {z1:.4f} - {m.W2:.4f}*{z2:.4f} = {eps1:.4f}")
     print("(same subtraction in both models -- difference is what happens to eps next)\n")
 
-    # ---------------------------------------------------------------
     # Axis 5: final performance table
-    # ---------------------------------------------------------------
+
     print("=== Axis 5: final performance ===")
     hdr = f"{'condition':10s} | {'ReconMSE_G':>10s} {'ReconMSE_L':>10s} | {'LatMSE_G':>9s} {'LatMSE_L':>9s} | {'convIter_G':>10s} {'convIter_L':>10s} | {'scale_G(prec)':>13s} {'scale_L(b)':>11s}"
     print(hdr)
@@ -132,10 +128,9 @@ if __name__ == "__main__":
               f"{r['diag_g']['epoch_conv_iters'][-1]:10.2f} {r['diag_l']['epoch_conv_iters'][-1]:10.2f} | "
               f"{r['diag_g']['epoch_scale0'][-1]:13.4f} {r['diag_l']['epoch_scale0'][-1]:11.4f}")
 
-    # ---------------------------------------------------------------
     # Figure A: latent-inference convergence -- energy vs iteration
     # (within one inference pass, last training epoch) for all conditions
-    # ---------------------------------------------------------------
+
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
     for ax, c in zip(axes, conditions):
         r = R[c]
@@ -149,10 +144,9 @@ if __name__ == "__main__":
     fig.tight_layout()
     fig.savefig("axis3_latent_inference.png", dpi=150)
 
-    # ---------------------------------------------------------------
     # Figure B: learned scale parameter over training epochs -- shows
     # variance (Gaussian) being outlier-inflated vs MAD (Laplace) staying stable
-    # ---------------------------------------------------------------
+
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
     for ax, c in zip(axes, conditions):
         r = R[c]
@@ -166,10 +160,8 @@ if __name__ == "__main__":
     fig.tight_layout()
     fig.savefig("axis4_scale_learning.png", dpi=150)
 
-    # ---------------------------------------------------------------
     # Figure C: weight-update magnitude vs error size (analytic) --
     # the actual mechanism behind axis 4 (parameter learning)
-    # ---------------------------------------------------------------
     eps_range = np.linspace(-8, 8, 400)
     g = Gaussian(precision=1.0)
     l = Laplace(b=0.3)
@@ -183,9 +175,8 @@ if __name__ == "__main__":
     fig.tight_layout()
     fig.savefig("axis4_weight_update_signal.png", dpi=150)
 
-    # ---------------------------------------------------------------
     # Figure D: reconstruction quality (axis 5, visual)
-    # ---------------------------------------------------------------
+
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
     for ax, c in zip(axes, conditions):
         r = R[c]
