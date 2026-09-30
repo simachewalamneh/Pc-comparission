@@ -13,12 +13,8 @@ class Gaussian:
         return self.precision * eps
 
     def update_scale(self, eps_array, floor=1e-3, ceiling=5.0, momentum=0.8):
-        """MLE update: precision = 1 / variance(eps). Sensitive to
-        outliers because it uses a squared (non-robust) statistic.
-        Clipped + EMA-smoothed for numerical stability (does not
-        change which model is more outlier-robust, just prevents
-        the precision from diverging to infinity when residuals
-        briefly get very small)."""
+        """EMA-smoothed and clipped moment-based precision update inspired
+        by the Gaussian MLE."""
         var = max(np.mean(np.asarray(eps_array) ** 2), floor)
         new_precision = min(1.0 / var, ceiling)
         self.precision = momentum * self.precision + (1 - momentum) * new_precision
