@@ -1,51 +1,9 @@
-"""
-pc_full_experiment.py
-
-ONE FILE, TWO EXPERIMENTS. Run with:
-    python3 -m venv venv && source venv/bin/activate
-    pip install numpy matplotlib
-    python pc_full_experiment.py
-
-================================================================
-PART A -- "Gaussian vs. Beyond-Gaussian Predictive-Coding Error Models"
-================================================================
-Generalizes the LIKELIHOOD of a scalar residual eps = x - x_hat:
-    Gaussian PC  (Rao & Ballard, 1999):   E(eps) = 0.5 * precision * eps^2
-    Laplace PC   (beyond-Gaussian case):  E(eps) = |eps| / b
-Same architecture, same data, same training loop for both -- only the
-error distribution differs. Both also learn their own scale parameter
-each epoch via closed-form MLE (Gaussian: precision=1/var(eps);
-Laplace: b=mean(|eps|)), which is what exposes Gaussian's instability
-under outliers vs Laplace's stability.
-
-LIMITATION (stated explicitly): this generalizes the likelihood of a
-SCALAR residual, not the full distribution-to-distribution formulation
-of Pinchetti et al. (2022). That is Part B.
-
-================================================================
-PART B -- full distribution-to-distribution predictive coding
-================================================================
-The bottom layer predicts a full categorical distribution
-    p = softmax(A @ z1 + b)
-against a genuine TARGET DISTRIBUTION q (not a single point), with
-error E0 = KL(q || p), whose gradient w.r.t. the logits is p - q --
-the vector generalization of (x - x_hat). Contrasted against a naive
-baseline that forces the categorical label into a continuous scalar
-with squared error (class ids are deliberately non-ordinally permuted
-to expose why that assumption is wrong).
-================================================================
-"""
-
 import math
 import numpy as np
 import matplotlib.pyplot as plt
 
 SEED = 0
-SEEDS = [0, 1, 2, 3, 4]    # multiple seeds -> mean +/- std instead of one run.
-                            # Still a SMALL multi-seed demonstration, not a
-                            # statistically powered benchmark -- say so out
-                            # loud in the talk. Bump toward 10 if you have
-                            # runtime to spare (roughly linear in len(SEEDS)).
+SEEDS = [0, 1, 2, 3, 4]    # multiple seeds -> mean +/- std instead of one run.                       
 TEST_FRAC = 0.2            # train/test split fraction held out for evaluation
 N_SAMPLES = 150
 N_EPOCHS = 50               # reduced further to keep 5-seed runtime reasonable
@@ -60,30 +18,19 @@ def train_test_split_idx(n, seed, test_frac=TEST_FRAC):
     n_test = int(n * test_frac)
     return idx[n_test:], idx[:n_test]          # train_idx, test_idx
 
-
-# ================================================================
 # PART A -- scalar error-distribution comparison
-# ================================================================
 
 class Gaussian:
     def __init__(self, precision=1.0):
         self.precision = precision
 
     def energy(self, eps):
-        # full -log N(eps; 0, 1/precision), normalization included:
-        # this matters once precision is being learned via MLE, since the
-        # normalization term changes with precision and affects which
-        # precision value actually minimizes the reported energy
         return 0.5 * self.precision * eps ** 2 - 0.5 * np.log(self.precision) + 0.5 * np.log(2 * np.pi)
 
     def grad(self, eps):
         return self.precision * eps
 
     def update_scale(self, eps_array, floor=1e-3, ceiling=5.0, momentum=0.8):
-        """MLE update: precision = 1/variance(eps). Sensitive to outliers
-        because it uses a squared (non-robust) statistic. Clipped +
-        EMA-smoothed for numerical stability only -- does not change
-        which model is more outlier-robust."""
         var = max(np.mean(np.asarray(eps_array) ** 2), floor)
         new_precision = min(1.0 / var, ceiling)
         self.precision = momentum * self.precision + (1 - momentum) * new_precision
@@ -94,18 +41,14 @@ class Laplace:
         self.b = b
 
     def energy(self, eps):
-        # full -log Laplace(eps; 0, b), normalization included
         return np.abs(eps) / self.b + np.log(2 * self.b)
 
     def grad(self, eps):
         return np.sign(eps) / self.b
 
     def update_scale(self, eps_array, floor=1e-3, momentum=0.8):
-        """MLE update: b = mean(|eps|). A robust (L1-type) statistic --
-        far less inflated by outliers than variance."""
         new_b = max(np.mean(np.abs(np.asarray(eps_array))), floor)
         self.b = momentum * self.b + (1 - momentum) * new_b
-
 
 class StudentT:
     def __init__(self, nu=4.0, scale=1.0):
@@ -120,11 +63,7 @@ class StudentT:
     def grad(self, eps):
         return (self.nu + 1) * eps / (self.nu * self.scale ** 2 + eps ** 2)
 
-
 class HierarchicalPC:
-    """2-layer hierarchical PC, scalar latents. z2 --(W2)--> z1_hat,
-    z1 --(W1)--> x_hat. Same class for both Gaussian and Laplace
-    experiments -- only dist0/dist1 differ."""
 
     def __init__(self, dist0, dist1, prior_var=1.0, seed=0, link=None, link_grad=None):
         rng = np.random.default_rng(seed)
@@ -147,25 +86,20 @@ class HierarchicalPC:
         return self.dist0.energy(eps0) + self.dist1.energy(eps1) + 0.5 * z2 ** 2 / self.prior_var
 
     def infer(self, x, n_steps=N_INFER_STEPS, lr_z=LR_Z, conv_delta=1e-3):
-        """conv_delta: relative-energy-change convergence threshold,
-        |E_t - E_{t-1}| / (|E_{t-1}| + eps) < conv_delta. Fair across
-        distribution families (unlike '% of initial energy', which is
-        biased by each family's different energy scale/offset)."""
         z1, z2 = 0.0, 0.0
         energy_hist, eps0_hist, eps1_hist = [], [], []
         prev_energy = None
         converged_at = n_steps
         for t in range(n_steps):
             eps0, eps1 = self.errors(x, z1, z2)          # errors at CURRENT z1,z2
-            g0, g1 = self.dist0.grad(eps0), self.dist1.grad(eps1)
+            g0, g1 = self.dist0.grad(eps0), self.dist1.grad(eps1) #g0 = eps0  ,and g1 = eps1 for Gaussian
             dE_dz1 = np.clip(-self.W1 * g0 + g1, -50, 50)
             dE_dz2 = np.clip(-self.W2 * self.link_grad(z2) * g1 + z2 / self.prior_var, -50, 50)
             z1 = np.clip(z1 - lr_z * dE_dz1, -10, 10)
             z2 = np.clip(z2 - lr_z * dE_dz2, -10, 10)
-            # re-evaluate AFTER the update so energy_hist and eps_hist both
-            # describe the SAME (post-update) z1,z2 at each timestep t --
-            # fixes the energy/error misalignment bug
+            # recompute the errors
             eps0_new, eps1_new = self.errors(x, z1, z2)
+              # calculate the new energy
             cur_energy = self.energy(x, z1, z2)
             energy_hist.append(cur_energy)
             eps0_hist.append(eps0_new)
@@ -183,7 +117,6 @@ class HierarchicalPC:
         g0, g1 = self.dist0.grad(eps0), self.dist1.grad(eps1)
         self.W1 = np.clip(self.W1 + lr_w * g0 * z1, -10, 10)
         self.W2 = np.clip(self.W2 + lr_w * g1 * self.link(z2), -10, 10)
-
 
 def make_dataset_A(noise_type, seed=SEED, n=N_SAMPLES):
     rng = np.random.default_rng(seed)
@@ -204,7 +137,6 @@ def make_dataset_A(noise_type, seed=SEED, n=N_SAMPLES):
     else:
         raise ValueError(noise_type)
     return z1_true + noise, z1_true, z2_true
-
 
 def train_with_diagnostics_A(model, X):
     N = len(X)
@@ -273,8 +205,10 @@ def run_part_a():
                 representative[c] = dict(diag_g=diag_g, diag_l=diag_l)
 
         summary[c] = dict(
+            #store latent MSE.
             recon_g=(np.mean(recon_g), np.std(recon_g)), recon_l=(np.mean(recon_l), np.std(recon_l)),
             lat_g=(np.mean(lat_g), np.std(lat_g)), lat_l=(np.mean(lat_l), np.std(lat_l)),
+            #store learned noise scale.
             scale_g=(np.mean(scale_g), np.std(scale_g)), scale_l=(np.mean(scale_l), np.std(scale_l)),
         )
 
@@ -290,7 +224,8 @@ def run_part_a():
         s = summary[c]
         print(f"{c:10s} | precision_G = {s['scale_g'][0]:.4f}+/-{s['scale_g'][1]:.4f}  |  "
               f"b_L = {s['scale_l'][0]:.4f}+/-{s['scale_l'][1]:.4f}")
-
+     # To plot learned scale vs training epoch ​
+     #What error-distribution scale the model learns during training
     fig, axes = plt.subplots(1, 3, figsize=(14, 4))
     for ax, c in zip(axes, conditions):
         r = representative[c]
@@ -303,6 +238,7 @@ def run_part_a():
     fig.tight_layout()
     fig.savefig("partA_scale_learning.png", dpi=150)
 
+    #How strongly an individual prediction error influences the weight update.
     eps_range = np.linspace(-8, 8, 400)
     g, l = Gaussian(1.0), Laplace(0.3)
     fig, ax = plt.subplots(figsize=(6, 4))
@@ -316,10 +252,7 @@ def run_part_a():
     print("Saved: partA_scale_learning.png, partA_weight_update_signal.png")
 
 
-# ================================================================
 # PART B -- full distribution-to-distribution comparison
-# ================================================================
-
 K = 4
 PERM = np.array([2, 0, 3, 1])  # fixed NON-ORDINAL relabeling
 
@@ -329,10 +262,8 @@ def softmax(logits):
     e = np.exp(z)
     return e / np.sum(e)
 
-
 def kl(q, p, eps=1e-9):
     return float(np.sum(q * np.log((q + eps) / (p + eps))))
-
 
 def make_dataset_B(condition, seed=SEED, n=200):
     rng = np.random.default_rng(seed)
@@ -355,12 +286,7 @@ def make_dataset_B(condition, seed=SEED, n=200):
             Q[i] /= Q[i].sum()
     return z2, true_class, Q
 
-
 class CategoricalPC:
-    """Bottom layer predicts a full categorical distribution p; error
-    is KL(q||p); dKL/dlogits = p - q, the vector generalization of
-    (x - x_hat)."""
-
     def __init__(self, seed=1):
         rng = np.random.default_rng(seed)
         self.W2 = rng.normal(0, 0.5)
@@ -376,6 +302,7 @@ class CategoricalPC:
             eps1 = z1 - z1_hat
             p = softmax(self.A * z1 + self.b)
             g_logits = p - q
+            #Cliiping gradiant is used for protecting  exploding gradients,          
             dE_dz1 = np.clip(np.dot(self.A, g_logits) + eps1, -50, 50)
             dE_dz2 = np.clip(-self.W2 * np.cos(z2) * eps1 + z2 / self.prior_var, -50, 50)
             z1 = np.clip(z1 - lr_z * dE_dz1, -10, 10)
